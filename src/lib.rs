@@ -7,24 +7,33 @@ pub struct PoolCreationError;
 
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         let thread = thread::spawn(move || loop {
-            let job = receiver
+            let message = receiver
                 .lock()
                 .expect("Worker {id} failed to aquire lock")
-                .recv()
-                .unwrap();
+                .recv();
 
-            println!("Worker {id} got a job; executing");
-
-            job();
+            match message {
+                Ok(job) => {
+                    println!("Worker {id} got a job; executing.");
+                    job();
+                }
+                Err(_) => {
+                    println!("Worker {id} disconnected; shutting down.");
+                    break;
+                }
+            }
         });
 
-        Worker { id, thread }
+        Worker {
+            id,
+            thread: Some(thread),
+        }
     }
 }
 
@@ -32,7 +41,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 impl ThreadPool {
@@ -57,9 +66,18 @@ impl ThreadPool {
             workers.push(worker);
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender: Some(sender),
+        }
     }
 
+    /// Creates a new ThreadPool
+    ///
+    /// The size is the number of threads in the pool
+    ///
+    /// This method is similar to ThreadPool::new() but it won't panic.
+    /// Instead, this method returns Result<ThreadPool, PoolCreationError>
     pub fn build(size: usize) -> Result<ThreadPool, PoolCreationError> {
         if size < 1 {
             return Err(PoolCreationError);
@@ -76,16 +94,35 @@ impl ThreadPool {
             workers.push(worker);
         }
 
-        let pool = ThreadPool { workers, sender };
+        let pool = ThreadPool {
+            workers,
+            sender: Some(sender),
+        };
+
         Ok(pool)
     }
 
+    /// Sends the provided closure to one of the workers in the ThreadPool
     pub fn execute<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
 
-        self.sender.send(job).unwrap();
+        self.sender.as_ref().unwrap().send(job).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
