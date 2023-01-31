@@ -3,7 +3,10 @@ use std::{
     thread,
 };
 
+#[derive(Debug)]
 pub struct PoolCreationError;
+
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     id: usize,
@@ -36,8 +39,6 @@ impl Worker {
         }
     }
 }
-
-type Job = Box<dyn FnOnce() + Send + 'static>;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -124,5 +125,52 @@ impl Drop for ThreadPool {
                 thread.join().unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_thread_pool_new() {
+        let pool = ThreadPool::new(1);
+        assert_eq!(pool.workers.len(), 1);
+    }
+
+    #[test]
+    fn test_thread_pool_build() -> Result<(), PoolCreationError> {
+        let pool = ThreadPool::build(1);
+        assert_eq!(pool?.workers.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_thread_pool_new_panic() {
+        ThreadPool::new(0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_thread_pool_build_error() {
+        ThreadPool::build(0).unwrap();
+    }
+
+    #[test]
+    fn test_thread_pool_execute() {
+        let pool = ThreadPool::new(1);
+        pool.execute(|| assert!(true));
+    }
+
+    #[test]
+    fn test_worker() {
+        let (sender, receiver) = mpsc::channel();
+
+        let worker = Worker::new(0, Arc::new(Mutex::new(receiver)));
+        assert_eq!(worker.id, 0);
+
+        let message = Box::new(|| assert!(true));
+        sender.send(message).unwrap();
     }
 }
