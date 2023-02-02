@@ -1,10 +1,18 @@
 use std::{
+    error::Error,
+    fmt,
     sync::{mpsc, Arc, Mutex},
     thread,
 };
 
 #[derive(Debug)]
 pub struct PoolCreationError;
+
+impl fmt::Display for PoolCreationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Size must be larger than 0")
+    }
+}
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
@@ -104,13 +112,20 @@ impl ThreadPool {
     }
 
     /// Sends the provided closure to one of the workers in the ThreadPool
-    pub fn execute<F>(&self, f: F)
+    pub fn execute<F>(&self, f: F) -> Result<(), Box<dyn Error>>
     where
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
 
-        self.sender.as_ref().unwrap().send(job).unwrap();
+        match self.sender.as_ref() {
+            None => eprintln!("Failed to take sender as ref"),
+            Some(sender) => {
+                sender.send(job)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -122,7 +137,9 @@ impl Drop for ThreadPool {
             println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                if let Err(_) = thread.join() {
+                    eprintln!("Failed to join thread");
+                }
             }
         }
     }
@@ -160,7 +177,7 @@ mod tests {
     #[test]
     fn test_thread_pool_execute() {
         let pool = ThreadPool::new(1);
-        pool.execute(|| assert!(true));
+        pool.execute(|| assert!(true)).unwrap();
     }
 
     #[test]
