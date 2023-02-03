@@ -9,15 +9,18 @@ use std::{
 
 use web_server_rs::ThreadPool;
 
+const THREAD_AMOUNT: usize = 4;
+const MAX_REQUESTS: usize = 2;
+
 fn main() {
     match TcpListener::bind("127.0.0.1:7878") {
         Err(err) => {
             eprintln!("Error binding TCP listener: {err}");
             process::exit(1);
         }
-        Ok(listener) => match ThreadPool::build(4) {
+        Ok(listener) => match ThreadPool::build(THREAD_AMOUNT) {
             Ok(pool) => {
-                for stream in listener.incoming().take(2) {
+                for stream in listener.incoming().take(MAX_REQUESTS) {
                     match stream {
                         Ok(stream) => {
                             let result = pool.execute(|| {
