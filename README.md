@@ -9,9 +9,11 @@ This project sets up a TCP connection on `127.0.0.1:7878`. It then proceeds to l
 A thread pool is created to process incoming requests. A "job" is created for each incoming request and sent to the thread pool via a message queue,
 which the receiving end is in the thread pool instance. A job is just a closure which is run by a thread.
 
-The number of threads created by the thread pool is hardcoded to 4, but this value can be changed easily. It's also possible for the thread pool to perform jobs other than processing requests.
+The number of threads created by the thread pool is hardcoded to 4, but this value can be changed easily by changing a constant. It's also possible for the thread pool to perform jobs other than processing requests.
 
 Finally, each request gets processed and HTTP responses are created, containing response headers and some HTML. The request handler contains a simple router for `/` and `/sleep`. `/` sends a "hello world" page and `/sleep` sleeps for 5 seconds before sending the "hello world" page. If these routes aren't matched, a simple "404" page is returned.
+
+A maximum of 2 requests are handled to demonstrate the graceful shutdown of the server, but this value can also be changed easily by changing a constant.
 
 # Improvements
 This project contains additional improvements:
